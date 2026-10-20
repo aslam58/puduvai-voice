@@ -1,0 +1,14 @@
+'use client';
+import {useEffect,useState} from 'react';
+import type {Locale} from '@/lib/domain';
+import {messages} from '@/lib/messages';
+import {reportMessages} from '@/lib/report-messages';
+import {pilotMessages,eventLabel} from '@/lib/pilot-messages';
+type Update={id:string;report_id:string;kind:string;created_at:string;category:keyof typeof messages.en;area:string;read:boolean};
+export function Notifications({locale}:{locale:Locale}){
+ const t=pilotMessages[locale],r=reportMessages[locale];
+ const [items,setItems]=useState<Update[]>([]),[state,setState]=useState('loading'),[offset,setOffset]=useState(0),[reload,setReload]=useState(0),[busy,setBusy]=useState(false),[actionError,setActionError]=useState(false);
+ useEffect(()=>{const controller=new AbortController();setState('loading');fetch('/api/notifications?offset='+offset,{signal:controller.signal}).then(async res=>{if(res.status===401){setState('signin');return}if(!res.ok)throw Error();setItems(await res.json());setState('ready')}).catch(()=>{if(!controller.signal.aborted)setState('error')});return()=>controller.abort()},[offset,reload]);
+ async function mark(id:string){setBusy(true);setActionError(false);try{const res=await fetch('/api/notifications',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});if(!res.ok)throw Error();setItems(v=>v.map(x=>x.id===id?{...x,read:true}:x))}catch{setActionError(true)}finally{setBusy(false)}}
+ return <section className="report-form" id="updates" aria-labelledby="updates-title"><div className="section-head"><h2 id="updates-title">{t.updates}</h2><button disabled={state==='loading'||busy} onClick={()=>setReload(v=>v+1)}>{t.refresh}</button></div><p className="form-help">{t.updatesHelp}</p>{state==='loading'?<p role="status">{r.loading}</p>:state==='signin'?<p><a className="primary" href={'/login?return_to='+encodeURIComponent('/?lang='+locale+'#updates')}>{t.signIn}</a></p>:state==='error'?<p role="alert">{r.loadError}</p>:<>{items.length===0?<p>{t.empty}</p>:<ul className="updates-list">{items.map(item=><li key={item.id}><a href={`/reports/${item.report_id}?lang=${locale}`}><strong>{eventLabel(item.kind,locale)}</strong><p>{messages[locale][item.category]} · {item.area}</p><time dateTime={item.created_at}>{new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kolkata'}).format(new Date(item.created_at))}</time></a>{!item.read&&<div><span className="pill">{t.unread}</span> <button disabled={busy} onClick={()=>mark(item.id)}>{t.mark}</button></div>}</li>)}</ul>}<div className="pagination"><button disabled={offset===0||busy} onClick={()=>setOffset(v=>Math.max(0,v-50))}>{r.previous}</button><button disabled={items.length<50||offset>=10000||busy} onClick={()=>setOffset(v=>v+50)}>{r.next}</button></div></>}{actionError&&<p role="alert">{r.error}</p>}</section>
+}
